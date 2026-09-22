@@ -1,0 +1,16 @@
+# ── CAD / heavy binary assets (kept out of git; store externally, e.g.
+#    OneDrive/Google Drive/NAS, or re-export from generate_models.py) ─────────
+cad_models/*.blend
+cad_models/*.stl
+cad_models/*.step
+cad_models/*.stp
+cad_models/*.f3d
+cad_models/*.dae
+
+# ── Editor / OS cruft ─────────────────────────────────────────────────────────
+*~
+*.swp
+.DS_Store
+.idea/
+.vscode/
+__pycache__/
