@@ -79,3 +79,63 @@ already owned by the flight controller link. If the FDR needs a native header UA
 (rather than USB, which is what `deploy/hw-config.yaml` currently specifies —
 `fdr.port: /dev/ttyUSB0`), use **UART2** (`/dev/ttyTHS2`) or another free pin pair
 instead of `/dev/ttyTHS1`.
+
+---
+
+## Known issue: Kakute H7 microSD card slot — not working
+
+**Symptom:** PX4 boot log shows `INFO [init] formatting /dev/mmcsd0` immediately
+followed by `ERROR [init] format failed`. `dataman` also fails to start (`Could not
+open data manager file /fs/microsd/dataman`), and `health_and_arming_checks` reports
+`Preflight Fail: Missing FMU SD Card`.
+
+### What we've ruled out
+
+Diagnosed live via NSH over MAVLink (`SERIAL_CONTROL`, same mechanism
+`onboard-doctor`'s whitelisted commands use):
+
+- `/dev/mmcsd0` **does** exist — the SPI-mode SD peripheral detects card presence at
+  the hardware level. (Kakute H7 wires its SD card as SPI-mode, not native SDIO —
+  `SPI::Bus::SPI1`, `SPIDEV_MMCSD(0)`, CS on `PortA/Pin4`, its own dedicated bus, not
+  shared with the OSD (SPI2) or IMU (SPI4) — so this isn't SPI bus contention either.)
+- `mkfatfs -F 32 /dev/mmcsd0` fails with a raw `I/O error` at the block-device level
+  (not a filesystem-logic error) — same result with a **freshly known-good card**.
+- **The card itself is confirmed healthy**: pulled it, ran a full non-destructive
+  `badblocks -sv` scan on a desktop (26 min, all ~8M blocks) — `0 bad blocks found`.
+  Write-protect was off. Reformatted clean (`mkfs.vfat -F 32`), verified with
+  `fsck.vfat` (no errors). Put back in the FC — **identical `I/O error`**, ruling the
+  card out conclusively.
+- Not something introduced by any of our firmware work (Zenoh migration, module
+  debloat) — this exact failure was already present before any of that, and nothing
+  we changed touches SD/SPI1 config.
+
+**Conclusion:** this points to a physical fault specific to *this* FC unit's SD slot
+or its SPI1 wiring/connector (e.g. a cracked/cold solder joint, worn push-push
+mechanism, bent CS pin) — not the card, not firmware/config. Needs physical inspection
+(magnification on the connector solder joints) or swapping this exact card into a
+different Kakute H7 unit to confirm conclusively. Not yet done.
+
+### What this actually breaks (and what it doesn't)
+
+Checked against PX4 source, not assumed:
+
+| Affected | Not affected |
+|---|---|
+| **ULog flight log storage** — `logger` starts (`mode=all`) but has nowhere to write. No post-flight log retrieval possible in the current state. | **Arming** — `COM_ARM_SDCARD` defaults to `1` ("warning only"), doesn't block arming. |
+| **`dataman`** fails to start — affects anything backed by it: complex uploaded polygon/plane geofences, waypoint mission storage, mission-resume-after-reboot state. None of these are used by this airframe (offboard+EV-only, no missions). | **The geofence we actually use** (`GF_MAX_HOR_DIST`/`GF_MAX_VER_DIST`, simple radius+altitude) — pure position math (`Geofence::isCloserThanMaxDistToHome`/`isBelowMaxAltitude`), no dataman dependency at all. |
+| | **Flight control itself** — EKF2, attitude/position control, actuator output — zero SD dependency. |
+| | **Parameter persistence** (`param save`) — this board migrated to **flash-based param storage** back in 2022 (see `boards/holybro/kakuteh7/init/rc.board_defaults`'s migration comment). Verified live: set a param, `param save`, full power-cycle reboot, value persisted with the `+` (saved) flag. Completely independent of the SD card. |
+
+### Possible mitigation (not yet configured)
+
+PX4's `logger` module already includes `log_writer_mavlink.cpp` — live ULog streaming
+*over MAVLink* instead of to a file. Could let flight logs be captured on the
+Jetson/ground side in real time without needing the SD slot fixed at all. Not
+configured or tested yet.
+
+### Bottom line
+
+Not a blocker for flying — arming, control, geofence, and param persistence are all
+unaffected. The real, standing loss is **no post-flight log retrieval**, which is
+worth fixing properly (physical inspection of the SD connector) rather than living
+with long-term.
