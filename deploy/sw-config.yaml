@@ -1,0 +1,66 @@
+# ~/deployment/sw-config.yaml (on the Jetson)
+# Software stack declaration for this drone unit (7in GEPRC Mark4 build).
+# Deployed via: haitomatic_stack/scripts/deployment.sh --deploy-dir <this dir> → ~/deployment/sw-config.yaml
+# DO NOT edit on the Jetson — edit here (7inch_drone_project/deploy/) and redeploy.
+
+provider_id: haitomatic
+uas_id: uas-haitomatic-01
+display_name: "Haitomatic Drone 01"
+description: "Haitomatic autonomy stack on Jetson Orin Nano 8GB — PX4 + ROS 2 Jazzy via Zenoh"
+ros_distro: jazzy
+rmw: zenoh
+launch_profile: outdoor_isr
+
+
+# Fixed, per-category typed-question schema for laya_diagnostics.py.
+# First-draft/example -- refine questions/criteria as real operating
+# experience shows what actually needs distinguishing. Each category gets
+# its own Laya forward pass against that category's own state slice (OS
+# stats, container snapshot, FC NSH output, or per-topic-chain publish
+# rates from ros_relay.hz_topics()) -- see src/laya_diagnostics.py.
+diag_schema:
+  os:
+    resources:
+      type: score
+      instructions: "How strained are the Jetson's CPU/RAM/thermal resources right now?"
+      criteria: ["nominal", "elevated", "critical"]
+    dmesg_anomaly:
+      type: noul
+      instructions: "Do the recent kernel/system log lines indicate a real hardware or driver problem?"
+
+  containers:
+    overall:
+      type: choice
+      instructions: "What is the overall health of the monitored containers?"
+      criteria:
+        healthy: "all containers running normally, no errors in recent logs"
+        degraded: "warnings or minor recoverable errors present in logs"
+        critical: "a container is not running, crash-looping, or logs show fatal errors"
+
+  fc:
+    overall:
+      type: choice
+      instructions: "What is the overall health of the flight controller link and its recent NSH diagnostic output?"
+      criteria:
+        healthy: "connected, no errors/warnings in recent NSH command output"
+        degraded: "connected but recent output shows warnings"
+        critical: "disconnected, or recent output shows errors or failed preflight checks"
+
+  # Keyed to match topic_chains above -- each module's state is that
+  # chain's per-topic publish rates from ros_relay.hz_topics().
+  modules:
+    camera_pipeline:
+      type: noul
+      instructions: "Is the camera pipeline (image_raw -> image_yolo -> annotated) publishing at a healthy rate on all its topics?"
+    detection:
+      type: noul
+      instructions: "Is the detection pipeline (building, target_count) publishing at a healthy rate?"
+    vio_pipeline:
+      type: noul
+      instructions: "Is the VIO pipeline (image_raw -> odometry) publishing at a healthy rate?"
+    px4_bridge:
+      type: noul
+      instructions: "Is the PX4 bridge (vehicle_control_mode, local_position, land_detected) publishing at a healthy rate?"
+    mission:
+      type: noul
+      instructions: "Is the mission FSM chain (phase, offboard_control_mode, trajectory_setpoint) publishing at a healthy rate?"

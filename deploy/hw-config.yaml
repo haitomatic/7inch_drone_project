@@ -1,0 +1,48 @@
+# ~/deployment/hw-config.yaml (on the Jetson)
+# Hardware capability declaration for this drone unit (7in GEPRC Mark4 build).
+# Deployed via: haitomatic_stack/scripts/deployment.sh --deploy-dir <this dir> → ~/deployment/hw-config.yaml
+# DO NOT edit on the Jetson — edit here (7inch_drone_project/deploy/) and redeploy.
+
+drone:
+  platform: "GEPRC Mark4 7-inch"
+  description: "7-inch autonomous drone — Jetson Orin Nano 8GB, PX4 Kakute H7"
+
+compute:
+  board: "Jetson Orin Nano 8GB"
+  jetpack: "7.2 (L4T r39.2.1, Ubuntu 24.04)"
+  arch: "arm64"
+
+flight_controller:
+  type: "px4"
+  board: "Kakute H7 V1.5"
+  fw_target: "holybro_kakuteh7_haitomatic"   # `make <fw_target>` in FC/PX4-Autopilot, and the built .px4's filename
+  uart_port: "/dev/fc_zenoh"
+  uart_baud: 921600
+  bridge: "zenoh"   # PX4's zenoh module over UART -- fw_target's serial locator (see FC/PX4-Autopilot
+                    # boards/holybro/kakuteh7/haitomatic.px4board). NOT yet wired up on the MC side: no
+                    # zenohd/rmw_zenoh_cpp bridge container exists here yet (uxrce_agent/micro-ros-agent
+                    # was removed once this stopped being uxrce-dds -- see MC/docker-compose.yml.j2).
+  usb_port: "/dev/fc_mavlink"   # Kakute H7 native USB VCP — NSH diagnostics + param/log access
+
+fdr:
+  # Flight Data Recorder — LILYGO T3-S3 V1.3 (ESP32-S3 + SX1262 LoRa)
+  # Connected to Jetson Orin via USB-C (native ESP32-S3 USB-CDC/ACM) --
+  # NOT UART: Jetson's UART1 header pins are already used by the FC.
+  enabled: true
+  port: "/dev/fdr"
+  baud: 115200
+  lora_freq_mhz: 868
+
+camera:
+  - id: cam0
+    model: "IMX219-160 IR-CUT"
+    interface: "CSI2"
+    device: "/dev/video0"
+    resolution: "1280x720"
+    fps: 60
+
+sensors:
+  rangefinder:
+    model: "VL53L1X"
+    interface: "I2C"
+  imu: "built-in PX4 IMU (ICM-42688-P)"
